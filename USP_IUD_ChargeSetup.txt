@@ -1,0 +1,105 @@
+
+[USP_IUD_ChargeSetup]
+
+ELSE IF @EVENT=3--SMS activatioin charge
+BEGIN 
+	SET @RETURNOUTID=0 
+
+			DECLARE @ACCNOSMS NVARCHAR(100)=(SELECT TOP 1 A.AccountNo FROM Account A INNER JOIN Acc_Mem AM ON AM.AccountNo=A.AccountNo
+						INNER JOIN Tbl_UtilPay_SavingType UP ON UP.UtilSav_Acc_ID=A.ACC_ID WHERE AM.Status=1 AND AM.Mem_ID=@Id
+						AND AM.Mem_ID NOT IN(SELECT TOP 1 Mem_ID FROM tbl_EnabledMessage 
+						WHERE (EnabledLoan=1 OR EnabledSaving=1 OR EnabledShare=1) AND Mem_ID=@Id))
+			IF @ACCNOSMS IS NULL OR @ACCNOSMS=''
+			BEGIN
+				SET @ACCNOSMS=(SELECT TOP 1 A.AccountNo FROM Account A INNER JOIN Acc_Mem AM ON AM.AccountNo=A.AccountNo
+					INNER JOIN Acc_Header AH ON AH.Acc_ID=A.ACC_ID AND AH.Acc_ParentID=49
+				 WHERE AM.Status=1  AND AM.Mem_ID=@Id
+				 AND AM.Mem_ID NOT IN(SELECT TOP 1 Mem_ID FROM tbl_EnabledMessage 
+				 WHERE  (EnabledLoan=0 OR EnabledSaving=0 OR EnabledShare=0) AND Mem_ID=@Id))
+			END	 
+				IF @ACCNOSMS IS NOT NULL AND @ACCNOSMS<>''
+						BEGIN
+							--DECLARE @L_ID INT,@MemId INT,@BRANCH INT,@auto_vid1 INT
+							SELECT @L_ID=ISNULL(L_ID,0),@BRANCH=BRANCH_ID,@MemId=MEM_ID FROM TBL_LEDGER WHERE LEDGER_NAME=@ACCNOSMS
+							IF @L_ID>0
+							-----------------SABINA----------------------------------------------------------------------------------
+							BEGIN
+								SET @BALANCE =(SELECT SUM(ISNULL(Cr_Amount,0))-SUM(ISNULL(Dr_Amount,0)) 
+												FROM TBL_CHILD_VOUCHER  CV 
+											
+												)
+							declare @MinBalAc int
+							set @MinBalAc =(select minbalac from DepositAcDetails d 
+							inner join account a on a.acc_id=d.acc_id where d.active=1 and a.L_ID=@L_ID )
+								--DECLARE @AMT_TO_DEDUCT DECIMAL(18,2),@ToLid int
+								SELECT @AMT_TO_DEDUCT=ISNULL(SmsChargeAmt,0),@ToLid=ToLidSms FROM ChargeSetup WHERE IsActive=1 AND ActiveToSms=1
+							
+								IF (@AMT_TO_DEDUCT>0 AND @BALANCE>=@MinBalAc+@AMT_TO_DEDUCT)
+						-----------------------------------SABINA----------------------------------------------------------------------------
+								BEGIN
+									exec USP_IUD_TBL_VOUCHER 1,0,'','E-XMSMS',@ModifiedBy,@ModifiedBy,@ModifiedBy,@Code,1,@ModifiedDate,0
+									,@ModifiedDate,@AMT_TO_DEDUCT,'','Mobile Charge Deduction',@MemId,@ModifiedDate,1,'',@BRANCH,1,@auto_vid1 output,''  
+				 
+						------------------------------------income Cr-----------------------------------------------
+							 INSERT INTO TBL_CHILD_VOUCHER 
+								   ([Auto_vID]
+								   ,[Dr_Amount]
+								   ,[Cr_Amount]
+								   ,[Narration]
+								   ,[Achead_ID]
+								   ,[L_ID]
+								   ,[Ledger_Code]
+								   ,[Acc_Type_ID]
+								   ,[USER_LEDGER_CODE]
+								   ,[USER_P_LEDGER_CODE])
+							 VALUES
+							 (
+								@auto_vid1,
+								0,
+								@AMT_TO_DEDUCT,
+								'Being Charge deduction for user activation',
+								(SELECT ACHEAD_ID FROM TBL_LEDGER WHERE L_ID=@ToLid),
+								@ToLid,
+								(SELECT LEDGER_CODE FROM TBL_LEDGER WHERE L_ID=@ToLid),
+								(SELECT AC_TYPE_ID FROM TBL_LEDGER WHERE L_ID=@ToLid),
+								(SELECT USER_LEDGER_CODE from TBL_LEDGER where L_ID=@ToLid),
+								(SELECT P_LEDGER_CODE from TBL_LEDGER where L_ID=@ToLid)
+								)
+						------------------------------------user account Dr-----------------------------------------------
+				 
+								 INSERT INTO TBL_CHILD_VOUCHER 
+									   ([Auto_vID]
+									   ,[Dr_Amount]
+									   ,[Cr_Amount]
+									   ,[Narration]
+									   ,[Achead_ID]
+									   ,[L_ID]
+									   ,[Ledger_Code]
+									   ,[Acc_Type_ID]
+									   ,[USER_LEDGER_CODE]
+									   ,[USER_P_LEDGER_CODE])
+								 VALUES
+								 (
+									@auto_vid1,
+									@AMT_TO_DEDUCT,
+									0,
+									('Being Charge deduction for user activation'),
+									(SELECT ACHEAD_ID FROM TBL_LEDGER WHERE L_ID=@L_ID),
+									@L_ID,
+									(SELECT LEDGER_CODE FROM TBL_LEDGER WHERE L_ID=@L_ID),
+									(SELECT AC_TYPE_ID FROM TBL_LEDGER WHERE L_ID=@L_ID),
+									(SELECT USER_LEDGER_CODE from TBL_LEDGER where L_ID=@L_ID),
+									(SELECT P_LEDGER_CODE from TBL_LEDGER where L_ID=@L_ID)
+									) 
+
+									INSERT INTO Withdraw               
+									SELECT @ACCNOSMS,@AMT_TO_DEDUCT,'SMS Activation Charge','',@ModifiedDate,@EnabledDate,'Saccos',1
+									,GETDATE(),1,GETDATE(),@auto_vid1 
+							
+									--UPDATE AspNetUsers SET  IsAuthorized=1 where UserName=@UserName
+									SET @RETURNOUTID=@auto_vid1
+									SET @MSG=@ACCNOSMS
+								END
+							END
+						END 
+END
