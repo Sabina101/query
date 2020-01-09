@@ -1,0 +1,34 @@
+--select *  into  dump1 from DumpXMLHistory  where  id  in (7119)----change garnu parne id 
+ --select * from dump1
+drop table dump1
+--update DumpXMLHistory set ,orderid=7119,isposted=0,autovid= null where   id=7119
+
+
+--------------------------then run this query for orderid change in xml-----------------------------------------
+declare @procName varchar(5000),@count int=1
+declare cur cursor  
+	
+	
+for  select @count 
+open cur
+fetch next from cur into @procName
+while(@count<100)
+begin 
+    declare @query nvarchar(500)='update dump1 set XMLFile.modify(''replace value of 
+				(/XMLData/XMLDatas/OrderId/text())['+cast(@count as nvarchar(50))+'] with ("7119")'')'
+ --select (@query)
+				print (@query)
+				execute(@query)
+				set @count=@count+1
+    fetch next from cur into @procName 
+end 
+close cur
+deallocate cur
+
+---------------------------------then update xmlfile of DumpXMLHistory  with dump1---------------------------------
+select  dh.XMLFile ,d.XMLFile from DumpXMLHistory dh
+inner join dump1 d on dh.Id=d.id
+
+
+--update DumpXMLHistory  set XMLFile =d.XMLFile  from DumpXMLHistory dh
+--inner join dump1 d on dh.Id=d.id
