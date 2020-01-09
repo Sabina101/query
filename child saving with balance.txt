@@ -1,0 +1,13 @@
+select ma.MemberId ,ma.FirstName +''+MiddleName +''+LastName as ParentName,Child_Name,a.accountno,Balance,ma.MobileNo
+ from Account a
+ inner join acC_header ah on a.acc_id=ah.acc_id
+inner join Acc_Mem am on am.AccountNo =a.AccountNo
+inner join ChildrenDetail cd on cd.AccountNo=a.AccountNo
+inner join MemberAccount ma on ma.Mem_ID=am.mem_id
+inner join (
+select SUM(cr_amount)-SUM(dr_amount) as balance,l_id from TBL_CHILD_VOUCHER  where USER_LEDGER_CODE like '30.%'
+group by L_ID 
+) cv on a.L_ID=cv.l_id
+where ACC_parentid=51 and Status=1
+order by cast(memberid as int)
+
