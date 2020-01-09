@@ -1,0 +1,160 @@
+declare @Loanno nvarchar(50)=''
+declare @ReceicableInt decimal(10,2)=0
+declare @dueInterest decimal(10,2)=0
+declare @totalinterest decimal(10,2)=0
+declare @lastpaydate date=''
+    --declare @from_date date='2018-07-16'
+    --declare @to_date date='2019-07-16'
+    --declare @code1 nvarchar(50)=''
+declare @tenure int=0
+declare  @paidinstallment decimal(10,2)=0 
+declare @paidprincipal decimal(10,2)=0
+create table tbl_loan(
+	Loan_no nvarchar(50),
+	
+	Dueinterest decimal(10,2),
+	--Totaltenure int,
+	--Payableprinciple decimal(10,2),
+	--PaidPrincipal decimal(10,2)
+
+
+)
+
+
+select l.LoanNo,remLoan,isnull(paidamt,0) as paidamt,ISNULL(paidint,0) as paidint,ISNULL(paidfine,0)as paidfine into #tmpLn1  from(
+select L_ID,remLoan from(
+
+select L_ID,SUM(Dr_Amount)-SUM(Cr_Amount) as remLoan from TBL_CHILD_VOUCHER tcv 
+inner join TBL_voucher tv on tcv.Auto_vID=tv.Auto_vID
+
+where USER_LEDGER_CODE like '110.%' and tv.Tran_Date<=@to_date
+group by L_ID)as t1
+
+where t1.L_ID not in(
+
+select t2.L_ID from(
+select L_ID,SUM(Dr_Amount)-SUM(Cr_Amount) as remLoan from TBL_CHILD_VOUCHER tcv 
+inner join TBL_voucher tv on tcv.Auto_vID=tv.Auto_vID
+
+where USER_LEDGER_CODE like '110.%' and tv.Tran_Date<@from_date
+group by L_ID)as t2
+
+where remLoan=0
+) )as a
+
+
+inner join Loan l on a.L_ID=l.L_id
+
+
+left  join(
+select * from(
+select a.LoanNo,tcv.L_ID,SUM(Cr_Amount)as paidamt from(
+select distinct l.LoanNo, tcv.Auto_vID from Loan l
+inner join TBL_CHILD_VOUCHER tcv on tcv.L_ID=l.L_id
+inner join tbl_Voucher tv on tcv.Auto_vID=tv.Auto_vID
+where Tran_Date between @from_date and @to_date 
+)as a
+inner join TBL_CHILD_VOUCHER tcv on a.Auto_vID=tcv.Auto_vID
+group by a.LoanNo,tcv.L_ID)as t
+where L_ID in (select L_ID from Loan where LoanNo=t.LoanNo))tp on l.LoanNo=tp.LoanNo
+
+full outer join(
+select * from(
+select a.LoanNo,tcv.L_ID,SUM(Cr_Amount)as paidint from(
+select distinct l.LoanNo, tcv.Auto_vID from Loan l
+inner join TBL_CHILD_VOUCHER tcv on tcv.L_ID=l.L_id
+inner join tbl_Voucher tv on tcv.Auto_vID=tv.Auto_vID
+where Tran_Date between @from_date and @to_date 
+)as a
+inner join TBL_CHILD_VOUCHER tcv on a.Auto_vID=tcv.Auto_vID
+group by a.LoanNo,tcv.L_ID)as t
+where L_ID=330)ti on tp.LoanNo=ti.LoanNo
+
+full outer join(
+select * from(
+select a.LoanNo,tcv.L_ID,SUM(Cr_Amount)as paidfine from(
+select distinct l.LoanNo, tcv.Auto_vID from Loan l
+inner join TBL_CHILD_VOUCHER tcv on tcv.L_ID=l.L_id
+inner join tbl_Voucher tv on tcv.Auto_vID=tv.Auto_vID
+where Tran_Date between @from_date and @to_date 
+)as a
+inner join TBL_CHILD_VOUCHER tcv on a.Auto_vID=tcv.Auto_vID
+group by a.LoanNo,tcv.L_ID)as t
+where L_ID=340)tf on tp.LoanNo=tf.LoanNo
+
+select * into #tmpLn2 from(
+select RN=ROW_NUMBER() over (partition by memberid order by memberid),at.* from(
+select ma.MemberId,a.AccountNo from Account a 
+inner join Acc_Mem am on a.AccountNo=am.AccountNo
+inner join MemberAccount ma on am.Mem_ID=ma.Mem_ID
+where am.Status=1 and a.ACC_ID=10
+)as at)as ft
+where RN=1
+
+--select * from #tmpLn1
+
+select t.* into #tmpLn from(
+select ma.MemberId,ma.FirstName+''+ma.MiddleName+''+ma.LastName as Name,t.LoanNo,SUM(paidamt)as paidamt,SUM(paidint)as paidint,SUM(paidfine)as paidfine,t.remLoan  from #tmpLn1 t
+inner join Loan l on t.LoanNo=l.LoanNo
+inner join MemberAccount ma on l.AccountNo=ma.Mem_ID
+
+group by MemberId,ma.FirstName,ma.MiddleName,ma.LastName,t.LoanNo,t.remLoan
+)as t
+left join #tmpLn2 t2 on t.MemberId=t2.MemberId
+
+
+declare curLoan insensitive cursor for
+select Loanno from #tmpLn
+open curLoan 
+fetch next from curLoan into @Loanno
+while @@FETCH_STATUS=0
+Begin
+	set @lastpaydate=isnull((select MAX(PaymentDate) from LoanPayment where LoanId=@Loanno and PaymentDate<=@to_date),(select l_date from Loan where LoanNo=@Loanno))
+	set @ReceicableInt=isnull((select SUM(INT_AMT) from TBL_DAILY_LOAN_INTEREST where LOAN_NO=@Loanno and LOAN_EFFECTIVE_FROM_DATE between @lastpaydate and @to_date),0)
+    set @dueInterest=isnull((select top 1 Inst_DueInterest from LoanPayment where LoanId=@Loanno and PaymentDate=@lastpaydate order by id desc),0)
+    set @totalinterest=@ReceicableInt+@dueInterest
+    --set @tenure=isnull((select COUNT(loanno) from EMI where loanno=@Loanno and toreceivedate<=GETDATE() ),0)
+    --set @paidinstallment=isnull((select SUM(principle) from EMI where loanno=@Loanno and toreceivedate<=GETDATE() ),0)
+    --set @paidprincipal=ISNULL((select SUM(principle) from LoanPayment where LoanId=@Loanno),0)
+    if (@totalinterest<0)
+    begin
+		set @totalinterest=0
+    end
+	Insert into tbl_loan values(@Loanno,@totalinterest)--,@tenure,@paidinstallment,@paidprincipal)
+	fetch next from curLoan into @Loanno	  
+
+
+End
+close curLoan
+deallocate curLoan
+
+select MemberId,Name,ah.Acc_Head,tl.LoanNo,paidamt,paidint,paidfine,Dueinterest,remLoan,L_ApprovedAmt as issuedamount,
+tn.NepaliDate as Issueddate,
+case when InstallmentType=1 then 'Monthly' 
+when InstallmentType=2 then 'Quaterly'
+when InstallmentType=3 then 'HalfYearly'
+else 'Yearly' end as Paymenttype,
+l.Rate,l.Tenure,--t.Totaltenure as paidtenure,Payableprinciple,
+l.L_LastDate as Expireddate --into #finalreport
+
+ from #tmpLn tl
+inner join tbl_loan t on tl.LoanNo=t.Loan_no
+inner join Loan l on tl.LoanNo=l.LoanNo
+inner join Acc_Header ah on l.Acc_ID=ah.Acc_ID
+inner join tbl_NepaliDate tn on l.L_Date=tn.EnglishDate
+where ah.Acc_Head like @code1+'%'
+
+--select MemberId,Name,Acc_Head,LoanNo,paidamt,paidint,paidfine,Dueinterest,remLoan,issuedamount,Issueddate,Paymenttype,
+--Rate,Tenure,(Tenure-paidtenure) as Remtenure,
+--case when (issuedamount-PaidPrincipal)>0 then (Payableprinciple-PaidPrincipal)else 0 end as Dueinstallment,tn.NepaliDate as Expireddate from #finalreport f
+--inner join tbl_NepaliDate tn on f.Expireddate=tn.EnglishDate
+
+-- order by case IsNumeric(MemberId) when 1 then Replicate('0', 100 - Len(MemberId)) + MemberId else cast (MemberId as nvarchar(50)) end
+
+
+drop table #tmpLn
+drop table tbl_loan
+drop table #tmpLn1
+drop table #tmpLn2
+--drop table #finalreport
+
