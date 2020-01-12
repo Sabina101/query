@@ -1,0 +1,57 @@
+
+declare @From date=@FROM_DATE
+declare @To date=@TO_DATE
+
+select a.accountno,sum(cr_Amount)-sum(dr_amount) as TotalBal ,a.l_id  into #TotalSav from account a 
+inner join tbl_child_voucher cv on cv.l_id=a.l_id 
+inner join tbl_voucher v on cv.auto_vid=v.auto_vid 
+where tran_date<=@To group by a.accountno,a.l_id 
+
+----For Deposit Interest
+select MemberId,Name,sum(TotalSav) as TotalSav,sum(Interest) as Interest into  #tempSav from (
+select ma.MemberId,ma.FirstName+' '+ma.MiddleName+' '+ma.LastName as Name,TotalBal as TotalSav,
+(select isnull(SUM(DepositAmount),0) from Deposit 
+where AccountNo=am.AccountNo and DepositedBy like '%interest%' and DepositDate >= @From and  DepositDate <= @To )as Interest
+ from MemberAccount ma
+inner join Acc_Mem am on ma.Mem_ID=am.Mem_ID
+inner join #TotalSav a on a.accountno=am.accountno
+inner join tbl_child_voucher cv on cv.l_id=a.l_id
+inner join tbl_voucher v on v.auto_vid=cv.auto_vid 
+--where v.tran_date>=@From and v.tran_Date<=@To
+group by ma.MemberId,ma.FirstName,ma.MiddleName,ma.LastName,am.AccountNo,TotalBal
+) as T1 group by T1.MemberId,T1.Name
+order by cast(memberid as int)
+
+
+--For Loan Interest
+select l.loanno,l.l_approvedamt as IssuedLoan,sum(dr_Amount)-sum(cr_amount) as RemainingLoan,l.l_id ,l.accountno into #RemLoan from loan l inner join tbl_child_voucher cv on cv.l_id=l.l_id
+inner join tbl_voucher v on cv.auto_Vid=v.auto_vid  where tran_date<=@To
+group by loanno,l_approvedamt,l.l_id,l.accountno
+
+select MemberId, Name,sum(IssuedLoan) as IssuedLoan,sum(RemainingLoan) as RemainingLoan ,SUM(Interest) as Interest,SUM(Fine)as Fine,SUM(Discount)as Discount
+ into #temploan from(
+select ma.MemberId,ma.FirstName+' '+ma.MiddleName+' '+ma.LastName as Name,l.LoanNo,l.IssuedLoan,l.RemainingLoan as RemainingLoan ,
+(select isnull(SUM(L_IAmt),0) from LoanReceipt where L_ID=l.LoanNo and L_PayDate between @From and @To )as Interest,
+(select isnull(SUM(L_FineOnInt),0) from LoanReceipt where L_ID=l.LoanNo and L_PayDate between @From and @To)as Fine,
+(select isnull(SUM(L_Discount),0) from LoanReceipt where L_ID=l.LoanNo and L_PayDate between @From and @To)as Discount from MemberAccount ma
+inner join #RemLoan l on ma.Mem_ID=l.AccountNo 
+inner join tbl_child_voucher cv on cv.l_id=l.l_id
+inner join tbl_voucher v on v.auto_vid=cv.auto_vid 
+--where v.tran_date>=@From and v.tran_Date<=@To
+group by  ma.MemberId,ma.FirstName,ma.MiddleName,ma.LastName,l.LoanNo,l.IssuedLoan,RemainingLoan
+) as T
+ group by T.MemberId,t.Name
+ order by cast(memberid as int)
+
+---select * from loan
+------------------------------------------------------------------------------------
+select s.MemberId ,s.Name,s.TotalSav, s.Interest ,isnull(l.IssuedLoan,0) as IssuedLoan,
+isnull(l.RemainingLoan,0) as RemainingLoan,ISNULL(l.Interest ,0) as LoanInt,
+ISNULL(l.Fine,0) as LoanFine, ISNULL(l.Discount ,0) as LoanDis
+ from #tempSav s
+left join #temploan l on s.MemberId=l.memberid
+order by cast(s.memberid as int) asc
+drop table #RemLoan
+drop table #TotalSav
+drop table #tempSav
+drop table #temploan
