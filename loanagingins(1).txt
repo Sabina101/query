@@ -1,0 +1,102 @@
+declare @loanid nvarchar(50)=''
+--select tl.loanno into #tmploan from tbl_loanagingupdate tl
+--inner join loan l on tl.loanno=l.LoanNo
+--  where Acc_ID<>28
+select 'HR00002' as loanno into #tmploan
+
+declare curLoan cursor for
+select loanno from #tmploan
+open curLoan
+fetch next from curLoan into @loanid
+while @@FETCH_STATUS=0
+
+ Begin
+ 
+	
+ declare @loanno nvarchar(50)=@loanid
+ declare @branchid int=(select BRANCH_ID from tbl_ledger where ledger_name=@loanno) 
+declare @nextemi int=1
+ declare @receivable_date date=(select top 1 toreceivedate from EMI where loanno=@loanno and principle<>0)
+ declare @nextlp int = (select COUNT(Id) from LoanPayment where LoanId=@loanno and PaymentDate<=@receivable_date and Principle<>0)
+ declare @sysdate date= (select Transaction_Date from TBL_SYSTEM_DATE_SETTINGS where Branchid=@Branchid)
+ 
+ declare @loan_issue_date date=(select L_Date from Loan where LoanNo=@loanno)
+ declare @tran_date date=(select top 1 toreceivedate from EMI where loanno=@loanno and principle<>0)
+ 
+ declare @last_payment_date date=isnull((select top 1 PaymentDate from LoanPayment where LoanId=@loanno and PaymentDate<=@receivable_date and Principle<>0 order by PaymentDate desc),@loan_issue_date)
+ declare @no_of_days int=0
+ declare @receivable_principle decimal(10,2)=0
+ declare @received_principle decimal(10,2)=0
+ declare @receivable_interest decimal(10,2)=0
+ declare @received_interest decimal(10,2)=0
+ declare @remaining_principle decimal(10,2)=(select L_ApprovedAmt from loan where LoanNo=@loanno)
+ 
+ --declare @countemi int =(select COUNT(loanno) from EMI where loanno=@loanno)
+ --declare @countloanp int=(select COUNT(LoanId) from LoanPayment where LoanId=@loanno)
+ 
+-- declare @nextreceivabledate date=(select top 1 toreceivedate from EMI where loanno=@loanno)
+ declare @counter int=DATEDIFF(d,@receivable_date,dateadd(d,-1,@sysdate))
+ 
+ declare @i int =0
+ Begin 
+    --set @counter=DATEDIFF(d,@receivable_date,dateadd(d,-1,@sysdate))
+    delete from TBL_LOAN_AGING_DAILY where LOAN_NO=@loanno
+    while (@i<=@counter)
+    BEGIN
+      
+      --set @receivable_date=(select top 1 toreceivedate from EMI where loanno=@loanno)
+      if(DATEDIFF(d,@tran_date,dbo.nextEmiDate(@loanno,@nextEmi))<0)
+      Begin
+      
+      set @nextemi=@nextemi+1
+      set @receivable_date=isnull(dbo.nextEmiDate(@loanno,@nextEmi),(select L_LastDate from Loan where LoanNo=@loanno))
+      
+      
+      
+      
+      
+      
+      End
+      
+      if(dbo.checkLoanpaid(@loanno,@tran_date)=1)
+      Begin
+       --set @last_payment_date=dbo.nextPayDate(@loanno,@nextlp)
+       set @nextlp=(select count(Id) from LoanPayment where LoanId=@loanno and PaymentDate<=@tran_date and Principle<>0)
+       set @last_payment_date=dbo.nextPayDate(@loanno,@nextlp)
+      End
+      
+      set @receivable_principle=(select sum(principle) from EMI where loanno=@loanno and toreceivedate<=@tran_date)
+      set @received_principle=isnull((select sum(Principle) from LoanPayment where LoanId=@loanno and PaymentDate<=@tran_date),0)
+      set @receivable_interest=(select SUM(interest) from EMI where loanno=@loanno and toreceivedate<=@tran_date)
+      set @received_interest=isnull((select sum(Interest) from LoanPayment where LoanId=@loanno and PaymentDate<=@tran_date),0) 
+      if (@receivable_principle>@received_principle and DATEDIFF(D,@tran_date,@receivable_date)=0 and @no_of_days=0)
+      begin
+		set @no_of_days=@no_of_days
+      end
+      else if(@receivable_principle>@received_principle)
+      begin
+       set @no_of_days=@no_of_days+1
+      end
+      else
+      begin
+		set @no_of_days=0
+      end
+      set @remaining_principle=(select L_ApprovedAmt from loan where LoanNo=@loanno)-@received_principle
+      
+      insert into TBL_LOAN_AGING_DAILY values (@loanno,@tran_date,@receivable_date,@last_payment_date,@no_of_days,@receivable_principle,@received_principle,@receivable_interest,@received_interest,@remaining_principle)
+      
+      set @tran_date=DATEADD(D,1,@tran_date)
+      set @counter=@counter-1
+    
+    
+    END
+    
+    End
+ 
+ 
+ 
+ fetch next from curLoan into @loanid
+ End
+ close curLoan
+ deallocate curLoan
+ drop table #tmploan
