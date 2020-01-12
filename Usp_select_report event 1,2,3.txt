@@ -1,0 +1,331 @@
+
+--------------changed for group wise report and periodic report -----------------
+IF @EVENT=1--SUMMARY FOR 4 LEDGERS
+BEGIN
+	if @CODE in(1,2)
+	SET @FRMDATE=(SELECT DBO.GetFISCALYRSTARTDate(@TO_DATE))
+	ELSE 
+	SET @FRMDATE=(SELECT TOP 1 Tran_Date FROM tbl_Voucher ORDER BY Tran_Date)
+	
+	IF @ID=1--PERIODIC
+	BEGIN
+		select t.* into #TEMPSUMLEDGER from (
+		SELECT AM.Achead_name,tl.L_ID,Achead_Node_User,LEDGER_CODE_NODE,tl.LEDGER_NAME,tl.USER_LEDGER_CODE,SUM(DR_AMOUNT)AS DRAMT,SUM(CR_AMOUNT) AS CRAMT FROM TBL_LEDGER tl
+		inner join TBL_CHILD_VOUCHER cv on tl.L_ID=cv.L_ID
+		INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+		INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+		where P_LEDGER_ID=0 and AC_TYPE_ID=@CODE AND Tran_Date BETWEEN @FROM_DATE AND @TO_DATE AND 
+		TV.CreatedBy IN(CASE WHEN @CODE1='0' THEN TV.CreatedBy ELSE @CODE1 END) AND
+		TV.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN TV.Branch_ID ELSE @CODE3 END) group by LEDGER_NAME,tl.L_ID,Achead_name,tl.USER_LEDGER_CODE,Achead_Node_User,LEDGER_CODE_NODE
+		UNION ALL
+		SELECT AM.Achead_name,tl.L_ID,Achead_Node_User,LEDGER_CODE_NODE,tl.LEDGER_NAME,tl.USER_LEDGER_CODE,SUM(DR_AMOUNT)AS DRAMT,SUM(CR_AMOUNT) AS CRAMT FROM TBL_LEDGER tl
+		inner join TBL_CHILD_VOUCHER cv on tl.USER_LEDGER_CODE=cv.USER_P_LEDGER_CODE
+		INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+		INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+		where P_LEDGER_ID=0 and AC_TYPE_ID=@CODE AND Tran_Date  BETWEEN @FROM_DATE AND @TO_DATE
+		AND TV.CreatedBy IN(CASE WHEN @CODE1='0' THEN TV.CreatedBy ELSE @CODE1 END) AND
+		TV.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN TV.Branch_ID ELSE @CODE3 END) group by LEDGER_NAME,tl.L_ID,Achead_name,tl.USER_LEDGER_CODE,Achead_Node_User ,LEDGER_CODE_NODE)as t
+		
+	
+		select t.*into #TEMPSUMLEDGER1 from (
+		SELECT AM.Achead_name,tl.L_ID,Achead_Node_User,LEDGER_CODE_NODE,tl.LEDGER_NAME,tl.USER_LEDGER_CODE,case when @CODE in(2,3)then SUM(Dr_Amount)-SUM(Cr_Amount)else SUM(Cr_Amount)-SUM(Dr_Amount) end as OPENING FROM TBL_LEDGER tl
+		inner join TBL_CHILD_VOUCHER cv on tl.L_ID=cv.L_ID
+		INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+		INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+		where P_LEDGER_ID=0 and AC_TYPE_ID=@CODE AND Tran_Date
+		BETWEEN @FRMDATE AND DATEADD(DAY,-1,@FROM_DATE) AND 
+		
+		TV.CreatedBy IN(CASE WHEN @CODE1='0' THEN TV.CreatedBy ELSE @CODE1 END) AND
+		TV.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN TV.Branch_ID ELSE @CODE3 END) group by LEDGER_NAME,tl.L_ID,Achead_name,tl.USER_LEDGER_CODE,Achead_Node_User,LEDGER_CODE_NODE
+		UNION ALL
+		SELECT AM.Achead_name,tl.L_ID,Achead_Node_User,LEDGER_CODE_NODE,tl.LEDGER_NAME,tl.USER_LEDGER_CODE,case when @CODE in(2,3)then SUM(Dr_Amount)-SUM(Cr_Amount)else SUM(Cr_Amount)-SUM(Dr_Amount) end as OPENING FROM TBL_LEDGER tl
+		inner join TBL_CHILD_VOUCHER cv on tl.USER_LEDGER_CODE=cv.USER_P_LEDGER_CODE
+		INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+		INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+		where P_LEDGER_ID=0 and AC_TYPE_ID=@CODE AND Tran_Date
+		BETWEEN @FRMDATE AND DATEADD(DAY,-1,@FROM_DATE) 
+
+		AND TV.CreatedBy IN(CASE WHEN @CODE1='0' THEN TV.CreatedBy ELSE @CODE1 END) AND
+		TV.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN TV.Branch_ID ELSE @CODE3 END) 
+		group by LEDGER_NAME,tl.L_ID,Achead_name,tl.USER_LEDGER_CODE,Achead_Node_User ,LEDGER_CODE_NODE
+		--///////////////////////////////////////////changed part
+		UNION ALL 
+		SELECT AM.Achead_name,tl.L_ID,Achead_Node_User,tl.LEDGER_CODE_NODE,tl.LEDGER_NAME,tl.USER_LEDGER_CODE,
+		0 as OPENING FROM TBL_LEDGER tl
+		INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+		WHERE P_LEDGER_ID=0  AND  tl.AC_TYPE_ID=@CODE AND CREATED_DATE BETWEEN @FROM_DATE  AND @TO_DATE
+		
+		--///////////////////////////////////////////////
+		)as t
+		--INNER JOIN TBL_LEDGER_ORDER OD ON T.L_ID=OD.L_ID  AND TABLE_NAME='TBL_LEDGER' ORDER BY FIRST_FACTOR,THIRD_FACTOR,FIFTH_FACTOR,SEVENTH_FACTOR,NINTH_FACTOR,ELEVENTH_FACTOR
+		
+	  select t2.* from(
+		SELECT isnull(TS.Achead_name,ts1.Achead_name) as Achead_name,isnull(TS.L_ID,TS1.L_ID) as L_ID,isnull(TS.Achead_Node_User,TS1.Achead_Node_User) as Achead_Node_User,isnull(TS.LEDGER_CODE_NODE,TS1.LEDGER_CODE_NODE) as LEDGER_CODE_NODE
+		,isnull(TS.LEDGER_NAME,TS1.LEDGER_NAME) as LEDGER_NAME,isnull(TS.USER_LEDGER_CODE,TS1.USER_LEDGER_CODE) as USER_LEDGER_CODE,isnull(TS1.OPENING,0)as Opening,isnull(TS.DRAMT,0) as DRAMT,
+		isnull(TS.CRAMT,0) as CRAMT
+		,isnull(TS1.OPENING,0) +case when @CODE in(2,3)then (isnull(TS.DRAMT,0)-isnull(TS.CRAMT,0))ELSE (isnull(TS.CRAMT,0)-isnull(TS.DRAMT,0)) END AS BALANCE FROM #TEMPSUMLEDGER TS FULL  OUTER JOIN #TEMPSUMLEDGER1 TS1 ON TS.L_ID=TS1.L_ID
+		) as t2 
+		cross apply dbo.funCreateLedgerOrder(T2.USER_LEDGER_CODE) n
+		order by n.f1,n.f2,n.f3,n.f4,n.f5,n.f6,n.f7,n.f8,n.f9
+		
+
+		--INNER JOIN TBL_LEDGER_ORDER OD ON t2.L_ID=OD.L_ID  AND TABLE_NAME='TBL_LEDGER' ORDER BY FIRST_FACTOR,THIRD_FACTOR,FIFTH_FACTOR,SEVENTH_FACTOR,NINTH_FACTOR,ELEVENTH_FACTOR
+	
+		
+		
+		SELECT TOP 1 NepaliDate AS Tran_Date,(SELECT Achead_Code_User FROM Achead_master WHERE Achead_id=@CODE)AS LEDGER_CODE FROM TBL_NEPALIDATE WHERE ENGLISHDATE=(SELECT TOP 1 Tran_Date FROM tbl_Voucher)
+	END
+	ELSE --UPTO
+	BEGIN
+		select t.*,0 as Opening from (
+		SELECT AM.Achead_name,tl.L_ID,am.Achead_Node_User,LEDGER_CODE_NODE,tl.LEDGER_NAME,tl.USER_LEDGER_CODE,SUM(DR_AMOUNT)AS DRAMT,SUM(CR_AMOUNT) AS CRAMT,case when @CODE in(2,3)then SUM(Dr_Amount)-SUM(Cr_Amount)else SUM(Cr_Amount)-SUM(Dr_Amount) end as BALANCE FROM TBL_LEDGER tl
+		inner join TBL_CHILD_VOUCHER cv on tl.L_ID=cv.L_ID
+		INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+		INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+		where P_LEDGER_ID=0 and AC_TYPE_ID=@CODE AND Tran_Date BETWEEN @FRMDATE AND @FROM_DATE  AND 
+		TV.CreatedBy IN(CASE WHEN @CODE1='0' THEN TV.CreatedBy ELSE @CODE1 END) AND
+		TV.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN TV.Branch_ID ELSE @CODE3 END) group by LEDGER_NAME,tl.L_ID,Achead_name,tl.USER_LEDGER_CODE,Achead_Node_User,LEDGER_CODE_NODE
+		UNION ALL
+		SELECT AM.Achead_name,tl.L_ID,Achead_Node_User,LEDGER_CODE_NODE,tl.LEDGER_NAME,tl.USER_LEDGER_CODE,SUM(DR_AMOUNT)AS DRAMT,SUM(CR_AMOUNT) AS CRAMT,case when @CODE in(2,3)then SUM(Dr_Amount)-SUM(Cr_Amount)else SUM(Cr_Amount)-SUM(Dr_Amount) end as BALANCE FROM TBL_LEDGER tl
+		inner join TBL_CHILD_VOUCHER cv on tl.USER_LEDGER_CODE=cv.USER_P_LEDGER_CODE
+		INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+		INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+		where P_LEDGER_ID=0 and AC_TYPE_ID=@CODE AND Tran_Date BETWEEN @FRMDATE AND @FROM_DATE AND 
+		TV.CreatedBy IN(CASE WHEN @CODE1='0' THEN TV.CreatedBy ELSE @CODE1 END) AND
+		TV.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN TV.Branch_ID ELSE @CODE3 END) 
+		group by LEDGER_NAME,tl.L_ID,Achead_name,tl.USER_LEDGER_CODE,Achead_Node_User,LEDGER_CODE_NODE )as t
+		--INNER JOIN TBL_LEDGER_ORDER OD ON T.L_ID=OD.L_ID  AND TABLE_NAME='TBL_LEDGER' ORDER BY FIRST_FACTOR,THIRD_FACTOR,FIFTH_FACTOR,SEVENTH_FACTOR,NINTH_FACTOR,ELEVENTH_FACTOR
+		cross apply dbo.funCreateLedgerOrder(t.LEDGER_CODE_NODE) n
+		order by n.f1,n.f2,n.f3,n.f4,n.f5
+	END
+		
+	SELECT TOP 1 NepaliDate AS Tran_Date,(SELECT Achead_Code_User FROM Achead_master WHERE Achead_id=@CODE)AS LEDGER_CODE FROM TBL_NEPALIDATE WHERE ENGLISHDATE=(SELECT TOP 1 Tran_Date FROM tbl_Voucher)
+END
+
+ELSE IF @EVENT=2-- EXPAND 4 LEDGERS AND LOAN AND DEPOSIT ACCOUNT TYPE
+BEGIN
+	if (SELECT AC_TYPE_ID FROM TBL_LEDGER WHERE L_ID=@CODE1) in(1,2)
+	SET @FRMDATE=(SELECT DBO.GetFISCALYRSTARTDate(@TO_DATE))
+	ELSE 
+	SET @FRMDATE=(SELECT TOP 1 Tran_Date FROM tbl_Voucher ORDER BY Tran_Date)
+	
+	IF @ID<>1-- PERIODIC
+	BEGIN
+		SET @FROM_DATE=@FRMDATE
+	END
+	--IF @ID=1-- PERIODIC
+	BEGIN
+		IF EXISTS(SELECT L_ID FROM TBL_LEDGER WHERE P_LEDGER_ID=@CODE1)
+		BEGIN
+			
+			select tv.Branch_ID,case when AC_TYPE_ID in(2,3)then sum(Dr_Amount)-SUM(Cr_Amount)else sum(Cr_Amount)-SUM(Dr_Amount)end as Opening into #tempOpening from tbl_Voucher tv inner join TBL_CHILD_VOUCHER cv on tv.Auto_vID=cv.Auto_vID  inner join TBL_LEDGER  tl on cv.L_ID=tl.L_ID 
+			where tl.P_LEDGER_ID=@CODE1 and tv.Tran_Date >= @FRMDATE and Tran_Date<@FROM_DATE group by TL.P_LEDGER_ID,AC_TYPE_ID,tv.Branch_ID
+				
+			IF @CODE3='0'
+			BEGIN
+								
+				select SN,TRANDATE,V_RefNo, Achead_name,isnull(FirstName+MiddleName+LastName,'')+'('+isnull(memberid,'')+')'  as Particular,[Voucher Type],UserName,Narration,auto_vid,isnull(MemberId,'')as MemberId,LEDGER_NAME as Ledger,AC_TYPE_ID,Tran_Date,
+				DRAMT,CRAMT INTO #TEMPLDGER from (
+				SELECT row_number()over(order by tran_date,tv.auto_vid)as sn,TL.AC_TYPE_ID,TL1.MemberId,MA.UserName,TL1.FirstName,TL1.MiddleName,TL1.LastName,tl.LEDGER_NAME, NP.NepaliDate AS TRANDATE,tv.Auto_vID,tv.Tran_Date,V_RefNo, AM.LEDGER_NAME AS Achead_name,TL.LEDGER_NAME as Particular,vtype AS 'Voucher Type',TV.Narration,
+				SUM(DR_AMOUNT)AS DRAMT,SUM(CR_AMOUNT) AS CRAMT 			
+				FROM TBL_LEDGER tl
+				inner join TBL_CHILD_VOUCHER cv on tl.L_ID=cv.L_ID 
+				INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+				INNER JOIN TBL_LEDGER AM ON TL.P_LEDGER_ID=AM.L_ID
+				left JOIN tbl_login MA ON tv.CreatedBy =MA.User_ID
+				left JOIN MemberAccount TL1 ON TL.MEM_ID =TL1.Mem_ID
+				
+				INNER JOIN tbl_NepaliDate NP ON TV.Tran_Date=NP.EnglishDate  where TL.P_LEDGER_ID=@CODE1 AND Tran_Date BETWEEN @FROM_DATE AND @TO_DATE	
+				AND TV.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN TV.Branch_ID ELSE @CODE3 END)
+				
+				Group by TL.LEDGER_NAME,AM.LEDGER_NAME,tl.AC_TYPE_ID,vtype,TV.Narration,NepaliDate,V_RefNo,TV.Tran_Date,TV.Auto_vID,TL1.MemberId,MA.UserName,TL1.FirstName,TL1.MiddleName,TL1.LastName
+				)AS T order by  TRAN_DATE,Auto_vID asc
+				
+				select SN,TRANDATE,V_RefNo,Particular,[Voucher Type],Narration,UserName,Balance AS OPENING,DRAMT,CRAMT,Balance+BALANCE2 as Balance  from (
+				SELECT sn,TRANDATE,V_RefNo,Achead_name,UserName,Particular,[Voucher Type],Narration,isnull((select SUM(opening) from #tempOpening),0)+isnull((select case when AC_TYPE_ID in(2,3)then SUM(DRAMT)-SUM(CRAMT) else SUM(CRAMT)-SUM(DRAMT)end as Bal from #TEMPLDGER where Tran_Date<=t1.Tran_Date and sn<t1.sn  group by AC_TYPE_ID),0)as Balance ,DRAMT,CRAMT,(CASE WHEN AC_TYPE_ID IN(2,3)THEN DRAMT-CRAMT ELSE CRAMT-DRAMT END)AS BALANCE2 FROM #TEMPLDGER t1
+				)as T
+				DROP TABLE #TEMPLDGER
+			END
+			ELSE
+			BEGIN
+				select SN,TRANDATE,V_RefNo, Achead_name,[VOUCHER TYPE],Narration,isnull(FirstName+MiddleName+LastName,'')+'('+isnull(memberid,'')+')'  as Particular,isnull(MemberId,'')as MemberId,UserName,auto_vid,LEDGER_NAME as Ledger,AC_TYPE_ID,Tran_Date,Branch_ID,
+				DRAMT,CRAMT INTO #TEMPLDGER1 from (
+				SELECT row_number()over(order by tran_date,tv.auto_vid)as sn,TL.AC_TYPE_ID,MemberId,FirstName,UserName,MiddleName,tv.Branch_ID,LastName,tl.LEDGER_NAME, NP.NepaliDate AS TRANDATE,tv.Auto_vID,tv.Tran_Date,V_RefNo, AM.LEDGER_NAME AS Achead_name,TL.LEDGER_NAME as Particular,vtype AS 'Voucher Type',TV.Narration,
+				SUM(DR_AMOUNT)AS DRAMT,SUM(CR_AMOUNT) AS CRAMT 			
+				FROM TBL_LEDGER tl
+				inner join TBL_CHILD_VOUCHER cv on tl.L_ID=cv.L_ID 
+				INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+				INNER JOIN TBL_LEDGER AM ON TL.P_LEDGER_ID=AM.L_ID
+				left JOIN MemberAccount TL1 ON TL.MEM_ID =TL1.Mem_ID
+				left JOIN tbl_login MA ON tv.CreatedBy =MA.User_ID
+				INNER JOIN tbl_NepaliDate NP ON TV.Tran_Date=NP.EnglishDate  where TL.P_LEDGER_ID=@CODE1 AND Tran_Date BETWEEN @FROM_DATE AND @TO_DATE	
+				AND TV.BRANCH_ID=@CODE3 
+				
+				Group by TL.LEDGER_NAME,AM.LEDGER_NAME,tl.AC_TYPE_ID,vtype,TV.Narration,NepaliDate,V_RefNo,tv.BRANCH_ID,TV.Tran_Date,UserName,TV.Auto_vID,MemberId,FirstName,MiddleName,LastName
+				)AS T order by  TRAN_DATE,Auto_vID asc
+				
+				select SN,TRANDATE,V_RefNo,Particular,[Voucher Type],Narration,UserName,Balance AS OPENING,DRAMT,CRAMT,Balance+BALANCE2 as Balance from (
+				SELECT sn,TRANDATE,V_RefNo,Achead_name,Particular,[Voucher Type],UserName,Narration,isnull((select SUM(opening) from #tempOpening WHERE Branch_ID=@CODE3),0)+isnull((select case when AC_TYPE_ID in(2,3)then SUM(DRAMT)-SUM(CRAMT) else SUM(CRAMT)-SUM(DRAMT)end as Bal from #TEMPLDGER1 where Tran_Date<=t1.Tran_Date and sn<t1.sn  group by AC_TYPE_ID),0)as Balance ,DRAMT,CRAMT,(CASE WHEN AC_TYPE_ID IN(2,3)THEN DRAMT-CRAMT ELSE CRAMT-DRAMT END)AS BALANCE2 FROM #TEMPLDGER1 t1
+				)as T
+				DROP TABLE #TEMPLDGER1
+			END
+			drop table #tempOpening
+		END
+		ELSE
+		BEGIN
+			select cv.L_ID,tv.Branch_ID,case when AC_TYPE_ID in(2,3)then sum(Dr_Amount)-SUM(Cr_Amount)else sum(Cr_Amount)-SUM(Dr_Amount)end as Opening into #tempOpening1 from tbl_Voucher tv inner join TBL_CHILD_VOUCHER cv on tv.Auto_vID=cv.Auto_vID  inner join TBL_LEDGER  tl on cv.L_ID=tl.L_ID 
+			where tl.L_ID=@CODE1 and tv.Tran_Date >= @FRMDATE and Tran_Date<@FROM_DATE group by cv.L_ID,AC_TYPE_ID,tv.Branch_ID
+
+			IF @CODE3='0'
+			BEGIN
+								
+				select SN,TRANDATE,V_RefNo, Achead_name,Particular
+				,[VOUCHER TYPE],Narration,AC_TYPE_ID,Tran_Date,UserName,
+				DRAMT,CRAMT INTO #TEMPLEDGERPER from (
+				SELECT row_number()over(order by tran_date,tv.auto_vid)as sn,TL.AC_TYPE_ID, NP.NepaliDate AS TRANDATE,UserName,tv.Auto_vID,cv.L_ID,tv.Tran_Date,V_RefNo, AM.Achead_name,TL.LEDGER_NAME as Particular,vtype AS 'Voucher Type',TV.Narration,
+				SUM(DR_AMOUNT)AS DRAMT,SUM(CR_AMOUNT) AS CRAMT 			
+				FROM TBL_LEDGER tl
+				inner join TBL_CHILD_VOUCHER cv on tl.L_ID=cv.L_ID 
+				INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+				INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+				left JOIN tbl_login MA ON tv.CreatedBy =MA.User_ID
+				--LEFT JOIN MemberAccount TL1 ON TL.MEM_ID  =(CASE WHEN EXISTS(SELECT MEM_ID FROM MemberAccount WHERE L_ID=TL.L_ID)THEN TL1.Mem_ID ELSE 0 END)
+				INNER JOIN tbl_NepaliDate NP ON TV.Tran_Date=NP.EnglishDate  where TL.L_ID=@CODE1 AND Tran_Date BETWEEN @FROM_DATE AND @TO_DATE	
+				AND TV.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN TV.Branch_ID ELSE @CODE3 END)
+				
+				Group by TL.LEDGER_NAME,Achead_name,tl.AC_TYPE_ID,vtype,TV.Narration,NepaliDate,V_RefNo,TV.Tran_Date,CV.L_ID,TV.Auto_vID,UserName
+				)AS T order by  TRAN_DATE,Auto_vID asc
+				
+				select SN,TRANDATE,V_RefNo,Particular,[Voucher Type],Narration,UserName,Balance AS OPENING,DRAMT,CRAMT,Balance+BALANCE2 as Balance from (
+				SELECT sn,TRANDATE,V_RefNo,Achead_name,Particular,[Voucher Type],UserName,Narration,isnull((select SUM(opening) from #tempOpening1),0)+isnull((select case when AC_TYPE_ID in(2,3)then SUM(DRAMT)-SUM(CRAMT) else SUM(CRAMT)-SUM(DRAMT)end as Bal from #TEMPLEDGERPER where Tran_Date<=t1.Tran_Date and sn<t1.sn  group by AC_TYPE_ID),0)as Balance ,DRAMT,CRAMT,(CASE WHEN AC_TYPE_ID IN(2,3)THEN DRAMT-CRAMT ELSE CRAMT-DRAMT END)AS BALANCE2 FROM #TEMPLEDGERPER t1
+				)as T
+				DROP TABLE #TEMPLEDGERPER
+			END
+			ELSE
+			BEGIN
+				select SN,TRANDATE,V_RefNo, Achead_name,Particular,Tran_Date,Branch_ID
+				,[VOUCHER TYPE],Narration,AC_TYPE_ID,UserName,
+				DRAMT,CRAMT  INTO #TEMPLEDGERPER1 FROM (
+				SELECT row_number()over(order by tran_date,tv.auto_vid)as sn,TL.AC_TYPE_ID,TV.BRANCH_ID,UserName, NP.NepaliDate AS TRANDATE,tv.Auto_vID,cv.L_ID,tv.Tran_Date,V_RefNo, AM.Achead_name,TL.LEDGER_NAME as Particular,vtype AS 'Voucher Type',TV.Narration,
+				SUM(DR_AMOUNT)AS DRAMT,SUM(CR_AMOUNT) AS CRAMT 			
+				FROM TBL_LEDGER tl
+				inner join TBL_CHILD_VOUCHER cv on tl.L_ID=cv.L_ID 
+				INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID
+				INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+				left JOIN tbl_login MA ON tv.CreatedBy =MA.User_ID
+				--LEFT JOIN MemberAccount TL1 ON TL.MEM_ID  =(CASE WHEN EXISTS(SELECT MEM_ID FROM MemberAccount WHERE L_ID=TL.L_ID)THEN TL1.Mem_ID ELSE 0 END)
+				INNER JOIN tbl_NepaliDate NP ON TV.Tran_Date=NP.EnglishDate  where TL.L_ID=@CODE1 AND Tran_Date BETWEEN @FROM_DATE AND @TO_DATE	
+				AND TV.BRANCH_ID =@CODE3 
+				Group by TL.LEDGER_NAME,Achead_name,tl.AC_TYPE_ID,vtype,TV.Narration,NepaliDate,UserName,TV.Branch_ID,V_RefNo,TV.Tran_Date,CV.L_ID,TV.Auto_vID
+				)AS T order by  TRAN_DATE,Auto_vID asc
+				
+				select SN,TRANDATE,V_RefNo,Particular,[Voucher Type],Narration,UserName,Balance AS OPENING,DRAMT,CRAMT,Balance+BALANCE2 as Balance from (
+				SELECT sn,TRANDATE,V_RefNo,Achead_name,Particular,[Voucher Type],UserName,Narration,isnull((select SUM(opening) from #tempOpening1 where Branch_ID=@CODE3),0)+isnull((select case when AC_TYPE_ID in(2,3)then SUM(DRAMT)-SUM(CRAMT) else SUM(CRAMT)-SUM(DRAMT)end as Bal from #TEMPLEDGERPER1 where Branch_ID=t1.Branch_ID and Tran_Date<=t1.Tran_Date and sn<t1.sn group by AC_TYPE_ID),0)as Balance ,DRAMT,CRAMT,(CASE WHEN AC_TYPE_ID IN(2,3)THEN DRAMT-CRAMT ELSE CRAMT-DRAMT END)AS BALANCE2 FROM #TEMPLEDGERPER1 t1
+				)as T
+				DROP TABLE #TEMPLEDGERPER1
+			END
+			drop table #tempOpening1
+		END
+	END
+
+END
+
+ELSE IF @EVENT=3-- SAVING AND LOAN SUMMARY
+BEGIN
+	SET @FRMDATE=(SELECT TOP 1 Tran_Date FROM tbl_Voucher ORDER BY Tran_Date)
+	
+	IF @ID<>1-- PERIODIC
+	BEGIN
+		SET @FROM_DATE=@FRMDATE
+	END
+	CREATE TABLE #tempOpeningSAVE
+	(
+	BRANCHID INT,
+	L_ID INT,
+	OPENING DECIMAL(18,2)
+	)
+	IF @CODE3=0
+	BEGIN
+		INSERT INTO #tempOpeningSAVE
+		select 0 AS Branch_ID,TL1.L_ID,case when TL1.AC_TYPE_ID in(2,3)then sum(Dr_Amount)-SUM(Cr_Amount)else sum(Cr_Amount)-SUM(Dr_Amount)end as Opening 
+		from tbl_Voucher tv 
+		inner join TBL_CHILD_VOUCHER cv on tv.Auto_vID=cv.Auto_vID  
+		inner join TBL_LEDGER  tl on cv.L_ID=tl.L_ID 
+		INNER JOIN TBL_LEDGER TL1 ON TL.P_LEDGER_ID=TL1.L_ID
+		INNER JOIN Achead_master AM ON TL1.ACHEAD_ID=AM.Achead_id
+		INNER JOIN TBL_LEDGER_SHOW_HIDE TLS ON AM.Achead_pcode=TLS.Achead_CODE
+		where TL1.P_LEDGER_ID=0 AND TLS.Header_ID=@CODE AND tv.Tran_Date <= @FROM_DATE --and Tran_Date<@FROM_DATE 
+		group by TL1.L_ID,TL1.AC_TYPE_ID
+	END
+	ELSE
+	BEGIN
+		INSERT INTO #tempOpeningSAVE
+		select tv.Branch_ID,TL1.L_ID,case when TL1.AC_TYPE_ID in(2,3)then sum(Dr_Amount)-SUM(Cr_Amount)else sum(Cr_Amount)-SUM(Dr_Amount)end as Opening 
+		from tbl_Voucher tv inner join TBL_CHILD_VOUCHER cv on tv.Auto_vID=cv.Auto_vID  inner join TBL_LEDGER  tl on cv.L_ID=tl.L_ID 
+		INNER JOIN TBL_LEDGER TL1 ON TL.P_LEDGER_ID=TL1.L_ID
+		INNER JOIN Achead_master AM ON TL1.ACHEAD_ID=AM.Achead_id
+		INNER JOIN TBL_LEDGER_SHOW_HIDE TLS ON AM.Achead_pcode=TLS.Achead_CODE
+		where TL1.P_LEDGER_ID=0 AND TLS.Header_ID=@CODE AND tv.Tran_Date < @FROM_DATE  
+		group by TL1.L_ID,TL1.AC_TYPE_ID,tv.Branch_ID
+		
+		---//////////////////////////////////////////////////////changed part
+		union all
+		select tl.BRANCH_ID ,tl.L_ID,
+		0 as OPENING from TBL_LEDGER_SHOW_HIDE tls 
+        inner join Achead_master ahm on tls.Achead_CODE=ahm.achead_code
+        inner join Achead_master ahm2 on ahm.achead_code=ahm2.achead_pcode
+        inner join TBL_LEDGER tl on ahm2.achead_code=tl.ACHEAD_CODE
+        where tls.Header_ID=@code and P_LEDGER_ID=0 
+        and  CREATED_DATE BETWEEN @FROM_DATE AND @TO_DATE
+		---////////////////////////////////////////////////////////////////////////
+	END
+			
+	IF @ID=1-- PERIODIC
+	BEGIN
+		
+		Select AM.ACHead_name,TL.Ledger_name,TL.User_ledger_code,TL.L_ID,ISNULL(OS.Opening,0) AS  Opening
+		,isnull(DRAMT,0) DRAMT,isnull(CRAMT,0) as CRAMT ,isnull(opening,0)+ISnull(closing,0) as BALANCE 
+		from #tempOpeningSAVE OS
+		RIGHT join
+		
+			(
+			select TL2.L_ID,isnull(sum(DR_AMOUNT),0) AS DRAMT,isnull(sum(CR_AMOUNT),0) as CRAMT
+			,case when TCV1.ACC_TYPE_ID in(2,3)then isnull(sum(Dr_Amount),0)-isnull(SUM(Cr_Amount),0) 
+			else isnull(sum(Cr_Amount),0)-isnull(SUM(Dr_Amount),0) end as Closing ,TL2.ACHEAD_CODE
+			 FROM TBL_CHILD_VOUCHER tcv1
+			
+			INNER JOIN TBL_VOucher tv1 on tcv1.auto_vid=tv1.auto_vid 
+			INNER JOIN TBL_LEDGER TL1 on tcv1.L_ID=TL1.L_ID
+			INNER JOIN TBL_LEDGER TL2 on TL1.P_Ledger_ID=TL2.L_ID
+			
+			where tv1.tran_date between @FROM_DATE and @TO_DATE
+			AND tv1.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN tv1.Branch_ID ELSE @CODE3 END)
+		    AND tv1.CreatedBy IN(CASE WHEN @CODE1='0' THEN tv1.CreatedBy ELSE @CODE1 END)
+			group by TCV1.ACC_TYPE_ID,TL2.L_ID,TL2.ACHEAD_CODE
+			) as t1 on t1.L_ID =OS.L_ID
+		LEFT join TBL_LEDGER TL on T1.L_ID=TL.L_ID
+		LEFT join ACHead_Master AM on TL.Achead_id=AM.AcHead_id
+		where t1.ACHEAD_CODE LIKE(SELECT ACHEAD_CODE FROM TBL_LEDGER_SHOW_HIDE WHERE Header_ID=@CODE)+'.%'
+		
+		
+		SELECT TOP 1 NepaliDate AS Tran_Date,(SELECT Achead_Code_User FROM Achead_master WHERE Achead_code=(SELECT Achead_CODE FROM TBL_LEDGER_SHOW_HIDE WHERE Header_ID=@CODE))AS LEDGER_CODE FROM TBL_NEPALIDATE WHERE ENGLISHDATE=(SELECT TOP 1 Tran_Date FROM tbl_Voucher)
+	
+	END
+	ELSE --UPTO
+	BEGIN
+		SELECT Achead_name,LEDGER_NAME,t.USER_LEDGER_CODE,T.L_ID,Opening,DRAMT,CRAMT,Opening+BALANCE AS BALANCE FROM (
+		SELECT AM.Achead_name,tl.LEDGER_NAME,tl.USER_LEDGER_CODE,tl.L_ID,ISNULL((SELECT sum(Opening) FROM #tempOpeningSAVE WHERE L_ID=TL.L_ID and BRANCHID in(CASE WHEN @CODE3='0'THEN BranchID ELSE @CODE3 END)),0) as Opening,SUM(DR_AMOUNT)AS DRAMT,SUM(CR_AMOUNT) AS CRAMT,case when tl.AC_TYPE_ID in(2,3)then SUM(Dr_Amount)-SUM(Cr_Amount)else SUM(Cr_Amount)-SUM(Dr_Amount) end as BALANCE FROM TBL_LEDGER TL
+		INNER JOIN Achead_master AM ON TL.ACHEAD_ID=AM.Achead_id
+		INNER JOIN TBL_LEDGER_SHOW_HIDE TLS ON AM.Achead_pcode=TLS.Achead_CODE
+		inner join TBL_CHILD_VOUCHER cv on tl.USER_LEDGER_CODE=cv.USER_P_LEDGER_CODE 
+		INNER JOIN tbl_Voucher TV ON CV.Auto_vID=TV.Auto_vID WHERE P_LEDGER_ID=0 AND TLS.Header_ID=@CODE AND Tran_Date <= @TO_DATE 
+		AND TV.BRANCH_ID IN(CASE WHEN @CODE3='0'THEN TV.Branch_ID ELSE @CODE3 END)
+		AND TV.CreatedBy IN(CASE WHEN @CODE1='0' THEN TV.CreatedBy ELSE @CODE1 END) group by TL.LEDGER_NAME,Achead_name,tl.L_ID,tl.AC_TYPE_ID,tl.USER_LEDGER_CODE
+		)AS T
+		--INNER JOIN TBL_LEDGER_ORDER OD ON T.L_ID=OD.L_ID  AND TABLE_NAME='TBL_LEDGER' ORDER BY FIRST_FACTOR,THIRD_FACTOR,FIFTH_FACTOR,SEVENTH_FACTOR,NINTH_FACTOR,ELEVENTH_FACTOR
+		cross apply dbo.funCreateLedgerOrder(T.USER_LEDGER_CODE) n
+		order by n.f1,n.f2,n.f3,n.f4,n.f5,n.f6,n.f7,n.f8,n.f9
+		
+		SELECT TOP 1 NepaliDate AS Tran_Date,(SELECT Achead_Code_User FROM Achead_master WHERE Achead_code=(SELECT Achead_CODE FROM TBL_LEDGER_SHOW_HIDE WHERE Header_ID=@CODE))AS LEDGER_CODE FROM TBL_NEPALIDATE WHERE ENGLISHDATE=(SELECT TOP 1 Tran_Date FROM tbl_Voucher)
+	END
+END
