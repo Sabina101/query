@@ -1,0 +1,59 @@
+
+/****** Object:  UserDefinedFunction [dbo].[checkLoanpaid]    Script Date: 06/26/2019 15:14:36 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE function [dbo].[checkLoanpaid](@loanno nvarchar(100),@tran_date date)
+returns bit
+as
+begin
+	declare @payValue bit=0
+	if((select LoanId from LoanPayment where LoanId=@loanno and PaymentDate=@tran_date and Principle<>0) is not null)
+	begin
+		set @payValue=1
+	
+	end
+	return @payValue
+
+
+end
+
+
+/****** Object:  UserDefinedFunction [dbo].[nextPayDate]    Script Date: 06/26/2019 12:21:01 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE function [dbo].[nextPayDate](@loanno nvarchar(100),@nextpay int)
+returns date
+as
+begin
+    declare @paymentdate date=(
+	select temp.PaymentDate from(
+	select *,RN=row_number() over(order by paymentdate asc)   from LoanPayment where LoanId=@loanno and Principle<>0)as temp where RN=@nextpay
+    )
+
+ return @paymentdate
+
+end
+
+
+
+/****** Object:  UserDefinedFunction [dbo].[nextEmiDate]    Script Date: 06/26/2019 12:20:58 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+CREATE function [dbo].[nextEmiDate](@loanno nvarchar(100),@nextemi int)
+returns date
+as
+begin
+    declare @toreceivedate date=(
+	select temp.toreceivedate from(
+	select  *,RN=row_number() over(order by toreceivedate)   from EMI where loanno=@loanno and principle<>0)as temp where RN=@nextemi 
+    )
+
+ return @toreceivedate
+
+end
